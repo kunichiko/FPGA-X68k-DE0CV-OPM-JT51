@@ -126,12 +126,12 @@ signal din_latch    : std_logic_vector(7 downto 0);
 
 signal divider      : std_logic_vector(3 downto 0); -- 32MHz → 4MHz → 2MHz
 
-signal cs_req       : std_logic;
-signal cs_req_d     : std_logic;
-signal cs_ack       : std_logic;
-signal cs_ack_d     : std_logic;
+signal CSn_d        : std_logic;
+signal CSn_fm_d     : std_logic;
 
-signal CSn_d       : std_logic;
+signal CSWRn_d      : std_logic;
+signal WRn_d        : std_logic;
+
 begin
 
     jt51_u0 :jt51 port map(
@@ -183,16 +183,16 @@ begin
     -- sysclk synchronized inputs
     process(pclk,rstn)begin
         if(rstn='0')then
-            CSn_d <= '1';
-            cs_ack_d <= '0';
+            CSWRn_d <= '1';
             din_latch <= (others => '0');
-            cs_req <= '0';
+            WRn_d <= '1';
         elsif(pclk' event and pclk='1')then
-            CSn_d <= CSn;
-            cs_ack_d <= cs_ack;
-            if( CSn_d = '1' and CSn = '0') then
+            CSWRn_d <= CSn or WRn;
+            if( CSWRn_d = '1' and ((CSn or WRn) = '0')) then
                 din_latch <= DIN;
-                cs_req <= not cs_ack_d;
+                WRn_d <= '0';
+            elsif(CSn = '1') then
+                WRn_d <= '1';
             end if;
         end if;
     end process;
@@ -211,18 +211,16 @@ begin
     -- fmclk synchronized
     process(fmclk,rstn)begin
         if(rstn='0')then
+            CSn_fm_d <= '1';
             jt51_cs_n <= '1';
             jt51_wr_n <= '1'; 
-            cs_req_d <= '0';
-            cs_ack <= '0';
         elsif(fmclk' event and fmclk='1')then
+            CSn_fm_d <= CSn; -- メタステーブル回避
             jt51_cs_n <= '1';
             jt51_wr_n <= '1';
-            cs_req_d <= cs_req; -- メタステーブル回避
-            if(cs_req_d /= cs_ack) then
-                cs_ack <= cs_req_d;
+            if(CSn_fm_d = '0') then
                 jt51_cs_n <= '0';
-                jt51_wr_n <= WRn;
+                jt51_wr_n <= WRn_d;
             end if;
 
         end if;
