@@ -44,8 +44,8 @@ entity OPM_JT51 is
         op2out	:out std_logic_vector(15 downto 0);
         op3out	:out std_logic_vector(15 downto 0);
     
-        fmclk	:in std_logic;
-        pclk	:in std_logic;
+        fmclk	:in std_logic;  -- 32MHz
+        pclk	:in std_logic;  -- 10MHz
         rstn	:in std_logic
     );
 end OPM_JT51;
@@ -123,14 +123,15 @@ signal jt51_xright  : std_logic_vector(15 downto 0);
 
 signal irq_n_d      : std_logic;
 signal din_latch    : std_logic_vector(7 downto 0);
+signal ad0_latch    : std_logic;
 
 signal divider      : std_logic_vector(3 downto 0); -- 32MHz → 4MHz → 2MHz
 
-signal CSn_d        : std_logic;
-signal CSn_fm_d     : std_logic;
-
 signal CSWRn_d      : std_logic;
-signal WRn_d        : std_logic;
+
+signal write_req    : std_logic;
+signal write_req_d  : std_logic;
+signal write_ack    : std_logic;
 
 begin
 
@@ -165,7 +166,7 @@ begin
     DOE <='1' when CSn='0' and RDn='0' else '0';
 
     jt51_din <= din_latch;
-    jt51_a0  <= ADR0;
+    jt51_a0  <= ad0_latch;
 
     CT1 <= jt51_ct1;
     CT2 <= jt51_ct2;
@@ -181,18 +182,21 @@ begin
     sndR <= jt51_xright(15 downto (16 - res));
 
     -- sysclk synchronized inputs
-    process(pclk,rstn)begin
+    process(pclk,rstn)
+        variable CSWRn: std_logic := '1';
+    begin
         if(rstn='0')then
             CSWRn_d <= '1';
             din_latch <= (others => '0');
-            WRn_d <= '1';
+            ad0_latch <= '0';
+            write_req <= '0';
         elsif(pclk' event and pclk='1')then
-            CSWRn_d <= CSn or WRn;
-            if( CSWRn_d = '1' and ((CSn or WRn) = '0')) then
+            CSWRn := CSn or WRn;
+            CSWRn_d <= CSWRn;
+            if(   CSWRn_d = '1' and CSWRn = '0') then -- falling edge
                 din_latch <= DIN;
-                WRn_d <= '0';
-            elsif(CSn = '1') then
-                WRn_d <= '1';
+                ad0_latch <= ADR0;
+                write_req <= not write_req;
             end if;
         end if;
     end process;
@@ -211,22 +215,27 @@ begin
     -- fmclk synchronized
     process(fmclk,rstn)begin
         if(rstn='0')then
-            CSn_fm_d <= '1';
+            write_req_d <= '0';
+            write_ack   <= '0';
             jt51_cs_n <= '1';
             jt51_wr_n <= '1'; 
         elsif(fmclk' event and fmclk='1')then
-            CSn_fm_d <= CSn; -- メタステーブル回避
+            write_req_d <= write_req; -- メタステーブル回避
             jt51_cs_n <= '1';
             jt51_wr_n <= '1';
-            if(CSn_fm_d = '0') then
-                jt51_cs_n <= '0';
-                jt51_wr_n <= WRn_d;
+            if(write_req_d /= write_ack) then
+                jt51_cs_n <= '0';  -- cs_n only used for writing
+                jt51_wr_n <= '0';
+                write_ack <= not write_ack;
             end if;
 
         end if;
     end process;
 
     -- fmclk enable
+    -- On X68000, YM2151 is driven by 4MHz.
+    -- So cen should be active every 8 clocks (32MHz/8 = 4MHz)
+    -- And cen_p1 should be active every 16 clock (32MHz/16 = 2MHz)
     process(fmclk,rstn)begin
         if(rstn='0')then
             jt51_cen    <= '0';
