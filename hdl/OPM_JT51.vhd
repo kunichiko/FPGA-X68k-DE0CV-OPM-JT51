@@ -121,7 +121,6 @@ signal jt51_irq_n   : std_logic;
 signal jt51_xleft   : std_logic_vector(15 downto 0);
 signal jt51_xright  : std_logic_vector(15 downto 0);
 
-signal irq_n_d      : std_logic;
 signal din_latch    : std_logic_vector(7 downto 0);
 signal ad0_latch    : std_logic;
 
@@ -168,9 +167,6 @@ begin
     jt51_din <= din_latch;
     jt51_a0  <= ad0_latch;
 
-    CT1 <= jt51_ct1;
-    CT2 <= jt51_ct2;
-
     monout <= (others => '0');
     op0out <= (others => '0');
     op1out <= (others => '0');
@@ -204,11 +200,13 @@ begin
     -- sysclk synchronized outputs
     process(pclk,rstn)begin
         if(rstn='0')then
-            irq_n_d <= '1';
+            CT1 <= '0';
+            CT2 <= '0';
             INTn <= '1';
         elsif(pclk' event and pclk='1')then
-            irq_n_d <= jt51_irq_n;
-            INTn <= irq_n_d;
+            CT1 <= jt51_ct1;
+            CT2 <= jt51_ct2;
+            INTn <= jt51_irq_n;
         end if;
     end process;
 
